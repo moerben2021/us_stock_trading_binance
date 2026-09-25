@@ -2,13 +2,15 @@
 import requests
 import logging
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
+from utils.retry import retry_with_config, RetryConfig
 
 logger = logging.getLogger(__name__)
 
 class WeComNotifier:
     """企业微信通知器"""
 
+    @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_trade_notification(self, webhook_url: str, trade_info: Dict[str, Any]) -> bool:
         """
         发送交易通知
@@ -31,10 +33,11 @@ class WeComNotifier:
 金额：${trade_info['amount']}
 手续费：${trade_info['fee']}
 账户余额：${trade_info['balance_before']} → ${trade_info['balance_after']}
-时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+时间：{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"""
 
         return self._send_message(webhook_url, content)
 
+    @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_alert_notification(self, webhook_url: str, alert_info: Dict[str, Any]) -> bool:
         """
         发送告警通知
@@ -50,10 +53,11 @@ class WeComNotifier:
 类型：{alert_info['alert_type']}
 消息：{alert_info['message']}
 详情：{alert_info.get('details', '无')}
-时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+时间：{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"""
 
         return self._send_message(webhook_url, content)
 
+    @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_summary_notification(self, webhook_url: str, summary_info: Dict[str, Any]) -> bool:
         """
         发送汇总通知
@@ -96,6 +100,9 @@ class WeComNotifier:
 
         Returns:
             是否发送成功
+
+        Raises:
+            Exception: 网络请求失败时抛出异常供重试装饰器处理
         """
         payload = {
             "msgtype": "text",
@@ -104,18 +111,14 @@ class WeComNotifier:
             }
         }
 
-        try:
-            response = requests.post(webhook_url, json=payload, timeout=10)
-            response.raise_for_status()
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        response.raise_for_status()
 
-            result = response.json()
-            if result.get("errcode") == 0:
-                logger.info("企业微信通知发送成功")
-                return True
-            else:
-                logger.error(f"企业微信通知发送失败: {result}")
-                return False
-
-        except Exception as e:
-            logger.error(f"发送企业微信通知异常: {e}")
+        result = response.json()
+        if result.get("errcode") == 0:
+            logger.info("企业微信通知发送成功")
+            return True
+        else:
+            error_msg = f"企业微信通知发送失败: {result}"
+            logger.error(error_msg)
             return False
