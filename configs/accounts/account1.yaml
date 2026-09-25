@@ -4,7 +4,7 @@
 account:
   name: "test_account_1"
   api_key_file: "secrets/account1.key"
-  webhook_file: "secrets/account1_webhook.txt"  # 企业微信 webhook 文件路径
+  wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_WEBHOOK_KEY_HERE"  # 企业微信通知地址
   initial_balance: 10000.0  # 初始余额（美元）
 
 strategies:
