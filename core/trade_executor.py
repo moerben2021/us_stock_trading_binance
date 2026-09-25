@@ -212,7 +212,7 @@ class TradeExecutor:
         current_price = self.binance_client.get_realtime_price(symbol)
 
         # 计算手续费
-        fee = executed_amount * 0.001
+        fee = executed_amount * self.FEE_RATE
 
         # 记录交易
         trade_data = {
@@ -262,11 +262,14 @@ class TradeExecutor:
     def _place_order_with_retry(self, symbol: str, side: str, quantity: float) -> Dict[str, Any]:
         """
         带重试的下单
+
+        使用 retry_with_config 装饰器包装 Binance API 调用
         """
-        # Create a wrapper function to apply retry decorator
-        retry_decorator = retry_with_config(self.retry_config)
-        place_order_func = retry_decorator(lambda: self.binance_client.place_order(symbol, side, quantity))
-        return place_order_func()
+        @retry_with_config(self.retry_config)
+        def place_order():
+            return self.binance_client.place_order(symbol, side, quantity)
+
+        return place_order()
 
     def _update_position(self, account_name: str, symbol: str, quantity: float, price: float, action: str):
         """
