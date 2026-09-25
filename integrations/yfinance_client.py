@@ -25,7 +25,7 @@ class YFinanceClient:
         """
         try:
             # 计算起始日期（多取一些天数以确保有足够的交易日数据）
-            end_date = datetime.now()
+            end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=days * 2)
 
             # 下载数据
