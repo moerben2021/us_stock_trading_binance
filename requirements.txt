@@ -1,0 +1,14 @@
+# 核心依赖
+apscheduler>=3.10.0
+yfinance>=0.2.0
+pandas>=2.0.0
+requests>=2.31.0
+pyyaml>=6.0
+
+# 日期处理
+pytz>=2023.3
+pandas-market-calendars>=4.3.0
+
+# 测试依赖
+pytest>=7.4.0
+pytest-cov>=4.1.0
