@@ -21,6 +21,51 @@ class ConfigLoader:
         self.accounts_path = Path(accounts_path)
         self.secrets_path = Path(secrets_path)
 
+    def _load_webhook_from_file(self, webhook_file_path: str) -> str:
+        """
+        从文件加载 webhook URL（内部辅助方法）
+
+        Args:
+            webhook_file_path: webhook 文件相对路径
+
+        Returns:
+            webhook URL 字符串
+        """
+        webhook_file = self.base_path / webhook_file_path
+
+        # 安全检查：先验证路径在 secrets 目录内
+        resolved = webhook_file.resolve()
+        allowed_base = (self.base_path / 'secrets').resolve()
+
+        try:
+            resolved.relative_to(allowed_base)
+        except ValueError:
+            raise ValueError(f"Webhook 文件必须在 secrets 目录内: {webhook_file_path}")
+
+        if not resolved.exists():
+            raise FileNotFoundError(f"Webhook 文件不存在: {webhook_file}")
+
+        # 验证符号链接不会绕过目录限制
+        try:
+            strict_resolved = resolved.resolve(strict=True)
+            strict_resolved.relative_to(allowed_base)
+        except ValueError:
+            raise ValueError(f"Webhook 文件符号链接指向 secrets 目录外: {webhook_file_path}")
+
+        try:
+            with open(strict_resolved, 'r', encoding='utf-8') as f:
+                webhook_content = f.read().strip()
+        except UnicodeDecodeError:
+            with open(strict_resolved, 'r') as f:
+                webhook_content = f.read().strip()
+
+        # 移除注释行并获取 URL
+        lines = [line.strip() for line in webhook_content.split('\n')
+                if line.strip() and not line.strip().startswith('#')]
+        if lines:
+            return lines[0]
+        return ""
+
     def load_system_config(self) -> Dict[str, Any]:
         """
         加载系统配置
@@ -38,44 +83,9 @@ class ConfigLoader:
 
         # 如果配置中指定了 webhook 文件，从文件加载
         if 'notifications' in config and 'admin_webhook_file' in config['notifications']:
-            webhook_file_path = config['notifications']['admin_webhook_file']
-            webhook_file = self.base_path / webhook_file_path
-
-            # 安全检查：先验证路径在 secrets 目录内，防止路径遍历和符号链接攻击
-            # 先 resolve 不使用 strict，这样可以验证路径结构
-            resolved = webhook_file.resolve()
-            allowed_base = (self.base_path / 'secrets').resolve()
-
-            # 使用 relative_to 验证路径在允许的目录内
-            try:
-                resolved.relative_to(allowed_base)
-            except ValueError:
-                raise ValueError(f"Webhook 文件必须在 secrets 目录内: {webhook_file_path}")
-
-            # 验证文件存在
-            if not resolved.exists():
-                raise FileNotFoundError(f"Webhook 文件不存在: {webhook_file}")
-
-            # 再次使用 strict=True resolve 验证符号链接不会绕过目录限制
-            try:
-                strict_resolved = resolved.resolve(strict=True)
-                strict_resolved.relative_to(allowed_base)
-            except ValueError:
-                raise ValueError(f"Webhook 文件符号链接指向 secrets 目录外: {webhook_file_path}")
-
-            try:
-                with open(strict_resolved, 'r', encoding='utf-8') as f:
-                    webhook_content = f.read().strip()
-            except UnicodeDecodeError:
-                # 如果 UTF-8 解码失败，尝试使用系统默认编码
-                with open(strict_resolved, 'r') as f:
-                    webhook_content = f.read().strip()
-
-            # 移除注释行并获取 URL
-            lines = [line.strip() for line in webhook_content.split('\n')
-                    if line.strip() and not line.strip().startswith('#')]
-            if lines:
-                config['notifications']['admin_webhook'] = lines[0]
+            webhook_url = self._load_webhook_from_file(config['notifications']['admin_webhook_file'])
+            if webhook_url:
+                config['notifications']['admin_webhook'] = webhook_url
 
         return config
 
@@ -114,6 +124,12 @@ class ConfigLoader:
                 account_config.update(secret_config)
             else:
                 raise FileNotFoundError(f"账户 {account_name} 的密钥文件不存在: {secret_file}")
+
+            # 如果账户配置中指定了 webhook 文件，从文件加载
+            if 'account' in account_config and 'webhook_file' in account_config['account']:
+                webhook_url = self._load_webhook_from_file(account_config['account']['webhook_file'])
+                if webhook_url:
+                    account_config['account']['webhook'] = webhook_url
 
             accounts.append(account_config)
 
