@@ -41,28 +41,41 @@ class ConfigLoader:
             webhook_file_path = config['notifications']['admin_webhook_file']
             webhook_file = self.base_path / webhook_file_path
 
-            # 安全检查：确保文件在 secrets 目录内，防止路径遍历攻击
+            # 安全检查：先验证路径在 secrets 目录内，防止路径遍历和符号链接攻击
+            # 先 resolve 不使用 strict，这样可以验证路径结构
             resolved = webhook_file.resolve()
             allowed_base = (self.base_path / 'secrets').resolve()
-            if not str(resolved).startswith(str(allowed_base) + os.sep) and str(resolved) != str(allowed_base):
+
+            # 使用 relative_to 验证路径在允许的目录内
+            try:
+                resolved.relative_to(allowed_base)
+            except ValueError:
                 raise ValueError(f"Webhook 文件必须在 secrets 目录内: {webhook_file_path}")
 
-            if webhook_file.exists():
-                try:
-                    with open(webhook_file, 'r', encoding='utf-8') as f:
-                        webhook_content = f.read().strip()
-                except UnicodeDecodeError:
-                    # 如果 UTF-8 解码失败，尝试使用系统默认编码
-                    with open(webhook_file, 'r') as f:
-                        webhook_content = f.read().strip()
-
-                # 移除注释行并获取 URL
-                lines = [line.strip() for line in webhook_content.split('\n')
-                        if line.strip() and not line.strip().startswith('#')]
-                if lines:
-                    config['notifications']['admin_webhook'] = lines[0]
-            else:
+            # 验证文件存在
+            if not resolved.exists():
                 raise FileNotFoundError(f"Webhook 文件不存在: {webhook_file}")
+
+            # 再次使用 strict=True resolve 验证符号链接不会绕过目录限制
+            try:
+                strict_resolved = resolved.resolve(strict=True)
+                strict_resolved.relative_to(allowed_base)
+            except ValueError:
+                raise ValueError(f"Webhook 文件符号链接指向 secrets 目录外: {webhook_file_path}")
+
+            try:
+                with open(strict_resolved, 'r', encoding='utf-8') as f:
+                    webhook_content = f.read().strip()
+            except UnicodeDecodeError:
+                # 如果 UTF-8 解码失败，尝试使用系统默认编码
+                with open(strict_resolved, 'r') as f:
+                    webhook_content = f.read().strip()
+
+            # 移除注释行并获取 URL
+            lines = [line.strip() for line in webhook_content.split('\n')
+                    if line.strip() and not line.strip().startswith('#')]
+            if lines:
+                config['notifications']['admin_webhook'] = lines[0]
 
         return config
 
