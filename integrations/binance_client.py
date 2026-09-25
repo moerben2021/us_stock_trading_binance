@@ -17,6 +17,11 @@ class BinanceClient:
     # 如果找不到官方文档，这部分需要根据实际 API 调整
     BASE_URL = "https://api.binance.us"  # 美股可能是 binance.us
 
+    # API 端点常量
+    ENDPOINT_TICKER_PRICE = "/api/v3/ticker/price"
+    ENDPOINT_ACCOUNT = "/api/v3/account"
+    ENDPOINT_ORDER = "/api/v3/order"
+
     def __init__(self, api_key: str, secret_key: str):
         """
         初始化客户端
@@ -51,10 +56,9 @@ class BinanceClient:
         Returns:
             实时价格
         """
-        endpoint = "/api/v3/ticker/price"
         params = {"symbol": symbol}
 
-        response = self._call_api("GET", endpoint, params)
+        response = self._call_api("GET", self.ENDPOINT_TICKER_PRICE, params)
         price = float(response["price"])
 
         logger.info(f"获取 {symbol} 实时价格: ${price}")
@@ -67,9 +71,7 @@ class BinanceClient:
         Returns:
             余额字典，格式：{"USDT": {"free": 10000.0, "locked": 0.0}}
         """
-        endpoint = "/api/v3/account"
-
-        response = self._call_api("GET", endpoint, {}, signed=True)
+        response = self._call_api("GET", self.ENDPOINT_ACCOUNT, {}, signed=True)
 
         balances = {}
         for item in response.get("balances", []):
@@ -94,9 +96,7 @@ class BinanceClient:
         """
         # 注意：这个方法需要根据 Binance 美股 API 的实际实现调整
         # 可能需要通过账户信息和历史交易来计算
-        endpoint = "/api/v3/account"
-
-        response = self._call_api("GET", endpoint, {}, signed=True)
+        response = self._call_api("GET", self.ENDPOINT_ACCOUNT, {}, signed=True)
 
         # 简化实现：从余额中查找
         for item in response.get("balances", []):
@@ -119,12 +119,17 @@ class BinanceClient:
         Args:
             symbol: 股票代码
             side: BUY 或 SELL
-            quantity: 数量
+            quantity: 数量（必须大于 0）
 
         Returns:
             订单信息
+
+        Raises:
+            ValueError: 如果 quantity <= 0
         """
-        endpoint = "/api/v3/order"
+        if quantity <= 0:
+            raise ValueError(f"订单数量必须大于 0，当前值为 {quantity}")
+
         params = {
             "symbol": symbol,
             "side": side,
@@ -132,7 +137,7 @@ class BinanceClient:
             "quantity": quantity
         }
 
-        response = self._call_api("POST", endpoint, params, signed=True)
+        response = self._call_api("POST", self.ENDPOINT_ORDER, params, signed=True)
 
         logger.info(f"下单成功: {side} {quantity} {symbol}, 订单ID: {response['orderId']}")
         return response
@@ -162,7 +167,10 @@ class BinanceClient:
         # 添加时间戳（签名请求需要）
         if signed:
             params["timestamp"] = int(time.time() * 1000)
-            params["signature"] = self._generate_signature(params)
+            # 生成签名（不包含 signature 自身）
+            signature = self._generate_signature(params)
+            # 将签名添加到参数中
+            params["signature"] = signature
 
         try:
             if method == "GET":

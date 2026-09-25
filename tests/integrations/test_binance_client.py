@@ -51,3 +51,12 @@ def test_rate_limiter_integrated(binance_client):
     """测试限流器集成"""
     # 限流器应该在初始化时创建
     assert binance_client.rate_limiter is not None
+
+def test_place_order_validates_quantity(binance_client):
+    """测试订单数量验证"""
+    # 数量必须大于 0
+    with pytest.raises(ValueError, match="订单数量必须大于 0"):
+        binance_client.place_order("TQQQ", "BUY", 0)
+
+    with pytest.raises(ValueError, match="订单数量必须大于 0"):
+        binance_client.place_order("TQQQ", "BUY", -1.5)
