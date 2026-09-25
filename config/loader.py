@@ -38,7 +38,15 @@ class ConfigLoader:
 
         # 如果配置中指定了 webhook 文件，从文件加载
         if 'notifications' in config and 'admin_webhook_file' in config['notifications']:
-            webhook_file = self.base_path / config['notifications']['admin_webhook_file']
+            webhook_file_path = config['notifications']['admin_webhook_file']
+            webhook_file = self.base_path / webhook_file_path
+
+            # 安全检查：确保文件在 secrets 目录内，防止路径遍历攻击
+            resolved = webhook_file.resolve()
+            allowed_base = (self.base_path / 'secrets').resolve()
+            if not str(resolved).startswith(str(allowed_base) + os.sep) and str(resolved) != str(allowed_base):
+                raise ValueError(f"Webhook 文件必须在 secrets 目录内: {webhook_file_path}")
+
             if webhook_file.exists():
                 try:
                     with open(webhook_file, 'r', encoding='utf-8') as f:
