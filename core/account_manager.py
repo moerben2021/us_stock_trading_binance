@@ -37,8 +37,8 @@ class AccountManager:
         try:
             snapshot_id = self.database.save_account_snapshot(snapshot_data)
             logger.info(
-                f"账户快照创建成功: {snapshot_data['account_name']}, "
-                f"snapshot_id={snapshot_id}, type={snapshot_data['snapshot_type']}"
+                f"账户快照创建成功: snapshot_id={snapshot_id}, "
+                f"type={snapshot_data['snapshot_type']}"
             )
             return snapshot_id
         except Exception as e:
@@ -67,7 +67,7 @@ class AccountManager:
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
-            logger.info(f"账户汇总获取成功: {account_name}, 总余额={summary['total_balance']}")
+            logger.info(f"账户汇总获取成功")
             return summary
         except Exception as e:
             logger.error(f"获取账户汇总失败: {e}", exc_info=True)
