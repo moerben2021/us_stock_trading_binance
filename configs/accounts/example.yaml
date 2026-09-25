@@ -1,0 +1,46 @@
+# Account Configuration Template
+# Copy to configs/accounts/{account_name}.yaml and update with your values
+
+account:
+  name: "Your Account Name"
+  wecom_webhook: "YOUR_WECOM_WEBHOOK_URL"
+
+strategies:
+  - name: "TQQQ DCA Strategy"
+    strategy_type: "DCA"
+    symbol: "TQQQ"
+    status: "active"
+    parameters:
+      amount: 500
+      interval: "monthly"
+      day_of_month: 15
+      time: "10:00"
+    sell_rules:
+      - condition: "profit_percent"
+        value: 20
+        action: "sell_all"
+      - condition: "loss_percent"
+        value: -10
+        action: "stop_loss"
+
+  - name: "SPY Drawdown Strategy"
+    strategy_type: "Drawdown"
+    symbol: "SPY"
+    status: "active"
+    parameters:
+      base_amount: 1000
+      check_interval: "weekly"
+      day_of_week: "Monday"
+      time: "09:30"
+      drawdown_threshold: 5
+      max_buys_per_week: 2
+
+  - name: "QQQ Value Averaging"
+    strategy_type: "ValueAveraging"
+    symbol: "QQQ"
+    status: "paused"
+    parameters:
+      target_value_path: 10000
+      monthly_increment: 500
+      rebalance_interval: "monthly"
+      sell_threshold: 15

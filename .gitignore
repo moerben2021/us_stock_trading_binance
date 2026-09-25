@@ -1,0 +1,34 @@
+# 敏感信息
+secrets/
+!secrets/.gitkeep
+
+# 数据库
+data/*.db
+data/*.db-journal
+
+# 日志
+logs/*.log
+logs/pm2-*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db

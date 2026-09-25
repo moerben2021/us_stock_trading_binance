@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "us-stock-dca"
+version = "0.1.0"
+description = "US Stock DCA Trading Framework"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "storage*", "config*", "strategies*", "integrations*", "utils*"]
+exclude = ["tests*", "data*", "logs*", "secrets*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
