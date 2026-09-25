@@ -36,6 +36,26 @@ class ConfigLoader:
         with open(system_file, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
+        # 如果配置中指定了 webhook 文件，从文件加载
+        if 'notifications' in config and 'admin_webhook_file' in config['notifications']:
+            webhook_file = self.base_path / config['notifications']['admin_webhook_file']
+            if webhook_file.exists():
+                try:
+                    with open(webhook_file, 'r', encoding='utf-8') as f:
+                        webhook_content = f.read().strip()
+                except UnicodeDecodeError:
+                    # 如果 UTF-8 解码失败，尝试使用系统默认编码
+                    with open(webhook_file, 'r') as f:
+                        webhook_content = f.read().strip()
+
+                # 移除注释行并获取 URL
+                lines = [line.strip() for line in webhook_content.split('\n')
+                        if line.strip() and not line.strip().startswith('#')]
+                if lines:
+                    config['notifications']['admin_webhook'] = lines[0]
+            else:
+                raise FileNotFoundError(f"Webhook 文件不存在: {webhook_file}")
+
         return config
 
     def load_account_configs(self) -> List[Dict[str, Any]]:
