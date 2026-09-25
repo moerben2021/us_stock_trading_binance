@@ -13,6 +13,9 @@ class TradeExecutor:
     负责实际的交易执行、余额检查、重试和通知
     """
 
+    # 交易手续费率（0.1%）
+    FEE_RATE = 0.001
+
     def __init__(self, binance_client, database, notifier, system_config: Dict[str, Any]):
         """
         初始化交易执行器
@@ -134,7 +137,7 @@ class TradeExecutor:
         order_id = order_result.get("orderId")
 
         # 计算手续费（简化：假设 0.1%）
-        fee = executed_amount * 0.001
+        fee = executed_amount * self.FEE_RATE
 
         # 记录交易
         trade_data = {
@@ -260,11 +263,10 @@ class TradeExecutor:
         """
         带重试的下单
         """
-        @retry_with_config(self.retry_config)
-        def _do_place_order():
-            return self.binance_client.place_order(symbol, side, quantity)
-
-        return _do_place_order()
+        # Create a wrapper function to apply retry decorator
+        retry_decorator = retry_with_config(self.retry_config)
+        place_order_func = retry_decorator(lambda: self.binance_client.place_order(symbol, side, quantity))
+        return place_order_func()
 
     def _update_position(self, account_name: str, symbol: str, quantity: float, price: float, action: str):
         """
