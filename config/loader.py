@@ -1,5 +1,6 @@
 """配置加载器"""
 import os
+import re
 import yaml
 from typing import Dict, List, Any
 from pathlib import Path
@@ -57,6 +58,11 @@ class ConfigLoader:
 
             # 加载对应的密钥文件
             account_name = account_config["account"]["name"]
+
+            # 验证账户名，防止路径遍历攻击
+            if not re.match(r'^[a-zA-Z0-9_-]+$', account_name):
+                raise ValueError(f"Invalid account name: {account_name}")
+
             secret_file = self.secrets_path / f"{account_name}.key"
 
             if secret_file.exists():

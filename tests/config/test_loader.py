@@ -38,6 +38,7 @@ def config_loader(tmp_path):
     }
 
     secret_file = secrets_dir / "alice.key"
+    secret_file.touch(mode=0o600)
     secret_file.write_text(yaml.dump(secret_config))
 
     return ConfigLoader(str(tmp_path), str(accounts_dir), str(secrets_dir))
@@ -57,3 +58,25 @@ def test_load_account_configs(config_loader):
     assert accounts[0]["account"]["name"] == "alice"
     assert accounts[0]["binance"]["api_key"] == "test_key"
     assert len(accounts[0]["strategies"]) == 1
+
+def test_load_account_configs_invalid_account_name(tmp_path):
+    """测试账户名包含路径遍历序列时抛出异常"""
+    accounts_dir = tmp_path / "accounts"
+    accounts_dir.mkdir()
+
+    # 创建带有路径遍历的账户配置
+    account_config = {
+        "account": {"name": "../malicious", "wecom_webhook": "https://example.com"},
+        "strategies": []
+    }
+
+    account_file = accounts_dir / "malicious.yaml"
+    account_file.write_text(yaml.dump(account_config))
+
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir()
+
+    loader = ConfigLoader(str(tmp_path), str(accounts_dir), str(secrets_dir))
+
+    with pytest.raises(ValueError, match="Invalid account name"):
+        loader.load_account_configs()
