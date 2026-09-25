@@ -45,3 +45,12 @@ def test_retry_fails_after_max_attempts():
         always_failing_func()
 
     assert call_count == 3
+
+def test_retry_with_zero_max_attempts():
+    """测试 max_attempts=0 的边界情况"""
+    @retry_with_config(RetryConfig(max_attempts=0, interval_seconds=0.1, backoff="fixed"))
+    def some_func():
+        return "never called"
+
+    with pytest.raises(ValueError, match="max_attempts 必须至少为 1"):
+        some_func()

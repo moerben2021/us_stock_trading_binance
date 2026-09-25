@@ -27,6 +27,10 @@ def retry_with_config(config: RetryConfig) -> Callable:
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
+            # 边界检查：max_attempts 必须至少为 1
+            if config.max_attempts < 1:
+                raise ValueError(f"max_attempts 必须至少为 1，当前值为 {config.max_attempts}")
+
             last_exception = None
 
             for attempt in range(1, config.max_attempts + 1):
