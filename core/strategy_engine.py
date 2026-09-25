@@ -124,7 +124,7 @@ class StrategyEngine:
             execution_data = {
                 "strategy_id": strategy_id,
                 "account_name": account_name,
-                "executed_at": datetime.now(timezone.utc).isoformat(),
+                "executed_at": datetime.utcnow().isoformat(),
                 "signal": signal.action,
                 "signal_amount": signal.amount,
                 "status": "success" if (signal.action == "HOLD" or (trade_result and trade_result.get("success"))) else "failed",
@@ -155,7 +155,7 @@ class StrategyEngine:
                 execution_data = {
                     "strategy_id": strategy_id,
                     "account_name": account_name,
-                    "executed_at": datetime.now(timezone.utc).isoformat(),
+                    "executed_at": datetime.utcnow().isoformat(),
                     "signal": "HOLD",
                     "signal_amount": 0,
                     "status": "failed",
