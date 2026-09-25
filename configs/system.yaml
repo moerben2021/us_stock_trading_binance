@@ -31,7 +31,7 @@ retry:
     backoff: 1.2
 
 notifications:
-  admin_webhook_file: "secrets/wecom_webhook.txt"  # 企业微信 webhook 存储在独立的密钥文件中
+  admin_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_SYSTEM_WEBHOOK_KEY"  # 系统级通知 webhook（日报/周报/月报）
   summaries:
     daily:
       enabled: true
