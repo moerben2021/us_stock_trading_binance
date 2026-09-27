@@ -11,9 +11,17 @@ logger = logging.getLogger(__name__)
 class YFinanceClient:
     """yFinance 客户端，用于获取历史行情数据"""
 
+    def __init__(self):
+        """
+        初始化 yFinance 客户端
+
+        注意：yFinance 会自动使用环境变量中的代理配置（HTTP_PROXY/HTTPS_PROXY）
+        """
+        logger.info("yFinance 客户端初始化完成（使用环境变量代理配置）")
+
     def get_history_data(self, symbol: str, days: int) -> pd.DataFrame:
         """
-        获取历史日行情数据
+        获取历史日行情数据（带重试）
 
         Args:
             symbol: 股票代码
@@ -23,29 +31,53 @@ class YFinanceClient:
             包含历史数据的 DataFrame
             列：Date, Open, High, Low, Close, Adj Close, Volume
         """
-        try:
-            # 计算起始日期（多取一些天数以确保有足够的交易日数据）
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=days * 2)
+        max_retries = 3
+        retry_count = 0
 
-            # 下载数据
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(start=start_date, end=end_date)
+        while retry_count < max_retries:
+            try:
+                # 创建 Ticker 对象（不传 session，让 yFinance 自动处理代理）
+                ticker = yf.Ticker(symbol)
 
-            if data.empty:
-                logger.warning(f"未获取到 {symbol} 的历史数据")
-                return pd.DataFrame()
+                # 优先使用 period 参数（更稳定，避免时间戳问题）
+                if days <= 5:
+                    period = "5d"
+                elif days <= 30:
+                    period = "1mo"
+                elif days <= 90:
+                    period = "3mo"
+                else:
+                    period = "1y"
 
-            # 只保留最近 N 个交易日的数据
-            if len(data) > days:
-                data = data.tail(days)
+                logger.info(f"获取 {symbol} 历史数据，period={period}")
+                data = ticker.history(period=period)
 
-            logger.info(f"成功获取 {symbol} 最近 {len(data)} 天的历史数据")
-            return data
+                if data.empty:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        logger.warning(f"未获取到 {symbol} 的历史数据，重试 {retry_count}/{max_retries}")
+                        continue
+                    else:
+                        logger.warning(f"未获取到 {symbol} 的历史数据（已重试 {max_retries} 次）")
+                        return pd.DataFrame()
 
-        except Exception as e:
-            logger.error(f"获取 {symbol} 历史数据失败: {e}")
-            raise
+                # 只保留最近 N 个交易日的数据
+                if len(data) > days:
+                    data = data.tail(days)
+
+                logger.info(f"成功获取 {symbol} 最近 {len(data)} 天的历史数据")
+                return data
+
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f"获取 {symbol} 历史数据失败: {e}，重试 {retry_count}/{max_retries}")
+                else:
+                    logger.error(f"获取 {symbol} 历史数据失败（已重试 {max_retries} 次）: {e}")
+                    # 不抛出异常，返回空 DataFrame，让策略处理
+                    return pd.DataFrame()
+
+        return pd.DataFrame()
 
     def is_trading_day(self, date: datetime) -> bool:
         """

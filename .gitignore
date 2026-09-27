@@ -2,6 +2,11 @@
 secrets/
 !secrets/.gitkeep
 
+# 配置文件（包含 webhook 等敏感信息）
+configs/accounts/*.yaml
+!configs/accounts/*.yaml.example
+system.yaml
+
 # 数据库
 data/*.db
 data/*.db-journal

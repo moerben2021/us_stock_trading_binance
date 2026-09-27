@@ -32,14 +32,17 @@ class StrategyEngine:
         self.database = database
         self.trade_executor = trade_executor
 
-        # 注册所有策略
+        # 注册所有策略（支持多种命名格式）
         self.strategies = {
             "dca": DCAStrategy(),
+            "DCA": DCAStrategy(),
             "drawdown": DrawdownStrategy(),
-            "value_averaging": ValueAveragingStrategy()
+            "Drawdown": DrawdownStrategy(),
+            "value_averaging": ValueAveragingStrategy(),
+            "ValueAveraging": ValueAveragingStrategy()
         }
 
-        logger.info(f"策略引擎初始化完成，已注册策略: {list(self.strategies.keys())}")
+        logger.info(f"策略引擎初始化完成，已注册策略: dca, drawdown, value_averaging")
 
     def execute_strategy(
         self,
@@ -56,12 +59,13 @@ class StrategyEngine:
         Returns:
             执行结果字典
         """
-        account_name = account_config.get("name")
+        account_name = account_config.get("account", {}).get("name")
         strategy_id = strategy_instance.get("id")
         strategy_type = strategy_instance.get("type")
         symbol = strategy_instance.get("symbol")
         strategy_config = strategy_instance.get("config", {})
-        webhook_url = account_config.get("webhook_url")
+        # 读取企业微信 webhook（字段名：wecom_webhook）
+        webhook_url = account_config.get("account", {}).get("wecom_webhook")
 
         logger.info(f"开始执行策略: {strategy_id} ({strategy_type}) - {account_name}/{symbol}")
 
@@ -185,7 +189,7 @@ class StrategyEngine:
         try:
             # 获取 Binance 持仓（权威源）
             binance_position = self.binance_client.get_position(symbol)
-            binance_qty = binance_position.get("quantity", 0)
+            binance_qty = binance_position.get("quantity", 0) if binance_position else 0
 
             # 获取本地持仓
             local_position = self.database.get_position(account_name, symbol)

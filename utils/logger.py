@@ -42,6 +42,7 @@ def setup_logger(name: str, log_file: str, level: str = "INFO") -> logging.Logge
     console_handler = logging.StreamHandler()
 
     # 创建格式化器
+    # 注意：exc_info=True 会自动在日志消息后添加异常堆栈
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -53,5 +54,8 @@ def setup_logger(name: str, log_file: str, level: str = "INFO") -> logging.Logge
     # 添加处理器
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    # 确保异常信息能够被记录
+    logger.propagate = False
 
     return logger

@@ -3,7 +3,11 @@
 
 system:
   timezone: "America/New_York"
-  log_level: "INFO"
+  log_level: "DEBUG"
+  proxy:
+    enabled: true  # 代理开关：本地测试时改为 true，服务器环境改为 false
+    http: "http://127.0.0.1:7990"  # 代理地址
+    https: "http://127.0.0.1:7990"  # 代理地址
 
 scheduler:
   check_interval: 60
@@ -31,7 +35,7 @@ retry:
     backoff: 1.2
 
 notifications:
-  admin_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_SYSTEM_WEBHOOK_KEY"  # 系统级通知 webhook（日报/周报/月报）
+  admin_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_ADMIN_WEBHOOK_KEY"  # 系统级通知 webhook（日报/周报/月报）
   summaries:
     daily:
       enabled: true
@@ -50,4 +54,5 @@ snapshots:
   daily_close: true
 
 balance_check:
-  insufficient_action: "warn"  # 可选: warn, skip, partial
+  insufficient_action: "partial"  # 可选: partial（部分成交）, skip（跳过）
+

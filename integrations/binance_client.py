@@ -5,6 +5,7 @@ import time
 import requests
 import logging
 from typing import Dict, Any, Optional
+from urllib.parse import urlencode
 from utils.rate_limiter import RateLimiter
 from utils.retry import retry_with_config, RetryConfig
 
@@ -13,25 +14,30 @@ logger = logging.getLogger(__name__)
 class BinanceClient:
     """Binance 美股交易客户端"""
 
-    # 注意：这里使用 Binance 美股 API 的实际端点
-    # 如果找不到官方文档，这部分需要根据实际 API 调整
-    BASE_URL = "https://api.binance.us"  # 美股可能是 binance.us
+    # Binance 全球站 API 端点
+    BASE_URL = "https://api.binance.com"
 
-    # API 端点常量
-    ENDPOINT_TICKER_PRICE = "/api/v3/ticker/price"
-    ENDPOINT_ACCOUNT = "/api/v3/account"
-    ENDPOINT_ORDER = "/api/v3/order"
+    # 美股 API 端点常量
+    ENDPOINT_QUOTE = "/sapi/v1/equity/market/quote"  # 获取报价
+    ENDPOINT_EXCHANGE_INFO = "/sapi/v1/equity/market/exchangeInfo"  # 交易所信息
+    ENDPOINT_ORDER = "/sapi/v1/equity/order/place"  # 下单
+    ENDPOINT_ORDER_DETAIL = "/sapi/v1/equity/order/detail"  # 订单详情
 
-    def __init__(self, api_key: str, secret_key: str):
+    # 资金账户 API 端点
+    ENDPOINT_FUNDING_ASSET = "/sapi/v1/asset/get-funding-asset"  # 资金账户（股票交易专用）
+
+    def __init__(self, api_key: str, secret_key: str, proxies: Optional[Dict[str, str]] = None):
         """
         初始化客户端
 
         Args:
             api_key: API Key
             secret_key: Secret Key
+            proxies: 代理配置，格式如 {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"}
         """
         self.api_key = api_key
         self.secret_key = secret_key
+        self.proxies = proxies
 
         # 初始化限流器
         self.rate_limiter = RateLimiter(
@@ -48,78 +54,108 @@ class BinanceClient:
 
     def get_realtime_price(self, symbol: str) -> float:
         """
-        获取实时价格
+        获取实时价格（美股）
 
         Args:
-            symbol: 股票代码
+            symbol: 股票代码（如 SPY, QQQ, AAPL）
 
         Returns:
-            实时价格
+            实时价格（使用中间价：(bid + ask) / 2）
         """
         params = {"symbol": symbol}
 
-        response = self._call_api("GET", self.ENDPOINT_TICKER_PRICE, params)
-        price = float(response["price"])
+        response = self._call_api("GET", self.ENDPOINT_QUOTE, params)
 
-        logger.info(f"获取 {symbol} 实时价格: ${price}")
+        # 美股 API 返回 bidPrice 和 askPrice
+        bid_price = float(response["bidPrice"])
+        ask_price = float(response["askPrice"])
+
+        # 使用中间价
+        price = (bid_price + ask_price) / 2
+
+        logger.info(f"获取 {symbol} 实时价格: ${price:.2f} (bid: ${bid_price:.2f}, ask: ${ask_price:.2f})")
         return price
 
     def get_account_balance(self) -> Dict[str, Dict[str, float]]:
         """
-        获取账户余额
+        获取资金账户余额（包含股票持仓和 USDC 现金）
+
+        使用 /sapi/v1/asset/get-funding-asset 端点查询资金账户中的所有资产。
+        资金账户是股票交易专用账户，与现货账户独立。
 
         Returns:
-            余额字典，格式：{"USDT": {"free": 10000.0, "locked": 0.0}}
+            余额字典，格式：{"USDC": {"free": 312.24, "locked": 49.77}, "SPY": {"free": 10.5, "locked": 0.0}}
         """
-        response = self._call_api("GET", self.ENDPOINT_ACCOUNT, {}, signed=True)
+        try:
+            # 调用资金账户 API（使用 POST 方法）
+            response = self._call_api("POST", self.ENDPOINT_FUNDING_ASSET, {}, signed=True)
 
-        balances = {}
-        for item in response.get("balances", []):
-            asset = item["asset"]
-            balances[asset] = {
-                "free": float(item["free"]),
-                "locked": float(item["locked"])
-            }
+            balances = {}
 
-        logger.info(f"获取账户余额: {len(balances)} 个资产")
-        return balances
+            # 响应格式：[{"asset": "USDC", "free": "312.24", "locked": "49.77", ...}, ...]
+            for item in response:
+                asset = item.get("asset")
+                free = float(item.get("free", 0))
+                locked = float(item.get("locked", 0))
+
+                # 只返回有余额的资产
+                if free > 0 or locked > 0:
+                    balances[asset] = {
+                        "free": free,
+                        "locked": locked
+                    }
+
+            logger.info(f"获取资金账户余额: {len(balances)} 个资产")
+            return balances
+
+        except Exception as e:
+            logger.error(f"获取资金账户余额失败: {e}", exc_info=True)
+            raise
 
     def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
-        获取持仓信息
+        获取持仓信息（从资金账户查询）
+
+        使用 /sapi/v1/asset/getUserAsset 端点查询特定股票的持仓。
 
         Args:
             symbol: 股票代码
 
         Returns:
-            持仓信息，包含数量和平均成本
+            持仓信息，包含数量和平均成本；如果无持仓返回 None
         """
-        # 注意：这个方法需要根据 Binance 美股 API 的实际实现调整
-        # 可能需要通过账户信息和历史交易来计算
-        response = self._call_api("GET", self.ENDPOINT_ACCOUNT, {}, signed=True)
+        try:
+            # 从账户余额中查找该股票
+            balance = self.get_account_balance()
 
-        # 简化实现：从余额中查找
-        for item in response.get("balances", []):
-            if item["asset"] == symbol:
-                quantity = float(item["free"]) + float(item["locked"])
+            if symbol in balance:
+                free = balance[symbol]["free"]
+                locked = balance[symbol]["locked"]
+                quantity = free + locked
+
                 if quantity > 0:
-                    # 实际应该从交易历史计算平均成本
+                    logger.info(f"获取 {symbol} 持仓: {quantity} 股")
                     return {
                         "symbol": symbol,
                         "quantity": quantity,
-                        "avg_cost": 0.0  # 需要从交易历史计算
+                        "avg_cost": 0.0  # TODO: 需要从交易历史计算平均成本
                     }
 
-        return None
+            logger.info(f"获取 {symbol} 持仓: 无持仓")
+            return None
+
+        except Exception as e:
+            logger.error(f"获取 {symbol} 持仓失败: {e}", exc_info=True)
+            return None
 
     def place_order(self, symbol: str, side: str, quantity: float) -> Dict[str, Any]:
         """
-        下市价单
+        下市价单（美股）
 
         Args:
-            symbol: 股票代码
+            symbol: 股票代码（如 SPY, QQQ）
             side: BUY 或 SELL
-            quantity: 数量（必须大于 0）
+            quantity: 对于市价买单，这是金额（notional）；对于市价卖单，这是数量（quantity）
 
         Returns:
             订单信息
@@ -128,19 +164,53 @@ class BinanceClient:
             ValueError: 如果 quantity <= 0
         """
         if quantity <= 0:
-            raise ValueError(f"订单数量必须大于 0，当前值为 {quantity}")
+            raise ValueError(f"订单金额/数量必须大于 0，当前值为 {quantity}")
 
+        # 构造参数
         params = {
             "symbol": symbol,
             "side": side,
-            "type": "MARKET",
-            "quantity": quantity
+            "orderType": "MARKET",  # 使用 orderType 而不是 type
         }
+
+        # 市价买单使用 notional（金额），市价卖单使用 quantity（数量）
+        if side == "BUY":
+            params["notional"] = quantity  # 买入：传入金额（如 $6）
+        else:
+            params["quantity"] = quantity  # 卖出：传入股数
 
         response = self._call_api("POST", self.ENDPOINT_ORDER, params, signed=True)
 
-        logger.info(f"下单成功: {side} {quantity} {symbol}, 订单ID: {response['orderId']}")
+        # TODO: 仅用于调试 - 生产环境应移除或限制为关键字段
+        # 用户要求查看完整响应以验证 API 行为
+        logger.info(f"下单接口完整响应: {response}")
+
+        order_id = response.get("orderId") or response.get("id")
+        logger.info(f"下单成功: {side} {symbol}, 订单ID: {order_id}")
         return response
+
+    def get_order_detail(self, order_id: str) -> Dict[str, Any]:
+        """
+        查询订单详情
+
+        Args:
+            order_id: 订单ID
+
+        Returns:
+            订单详情，包含成交信息
+        """
+        try:
+            params = {"orderId": order_id}
+            response = self._call_api("GET", self.ENDPOINT_ORDER_DETAIL, params, signed=True)
+
+            logger.info(f"订单详情查询成功: orderId={order_id}")
+            logger.debug(f"订单详情: {response}")
+
+            return response
+
+        except Exception as e:
+            logger.error(f"查询订单详情失败: {e}", exc_info=True)
+            raise
 
     @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=5, backoff="exponential"))
     def _call_api(self, method: str, endpoint: str, params: Dict[str, Any], signed: bool = False) -> Dict[str, Any]:
@@ -174,9 +244,9 @@ class BinanceClient:
 
         try:
             if method == "GET":
-                response = requests.get(url, headers=headers, params=params, timeout=10)
+                response = requests.get(url, headers=headers, params=params, proxies=self.proxies, timeout=10)
             elif method == "POST":
-                response = requests.post(url, headers=headers, params=params, timeout=10)
+                response = requests.post(url, headers=headers, params=params, proxies=self.proxies, timeout=10)
             else:
                 raise ValueError(f"不支持的 HTTP 方法: {method}")
 
@@ -187,6 +257,16 @@ class BinanceClient:
                 time.sleep(retry_after)
                 # 重新调用（由装饰器处理）
                 raise Exception("API 限流，重试中...")
+
+            # 在 raise_for_status 之前记录详细错误信息
+            if response.status_code >= 400:
+                try:
+                    error_detail = response.json()
+                    error_code = error_detail.get('code', 'N/A')
+                    error_msg = error_detail.get('msg', 'N/A')
+                    logger.error(f"API 错误响应: code={error_code}, msg={error_msg}")
+                except:
+                    logger.error(f"API 错误响应（非 JSON）: status={response.status_code}, body_prefix={response.text[:100]}")
 
             response.raise_for_status()
             return response.json()
@@ -204,11 +284,16 @@ class BinanceClient:
 
         Returns:
             签名字符串
+
+        注意：使用 urlencode 对参数进行 URL 编码后再签名
         """
-        query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+        # 使用 urlencode 生成 query string（会自动进行 URL 编码）
+        query_string = urlencode(params)
+
         signature = hmac.new(
             self.secret_key.encode("utf-8"),
             query_string.encode("utf-8"),
             hashlib.sha256
         ).hexdigest()
+
         return signature

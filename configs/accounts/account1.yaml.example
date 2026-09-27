@@ -1,78 +1,69 @@
-# Account Configuration - Test Account 1
+# Account Configuration - Example Template
 # 三种策略完整配置示例
 
 account:
-  name: "test_account_1"
-  api_key_file: "secrets/account1.key"
+  name: "account1"  # 账户名称，密钥文件自动为 secrets/account1.key
   wecom_webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_WEBHOOK_KEY_HERE"  # 企业微信通知地址
   initial_balance: 10000.0  # 初始余额（美元）
 
 strategies:
   # 策略 1: DCA 定投 SPY
-  - id: "dca_spy_weekly"
-    type: "dca"
+  - id: "dca_spy_monthly"
+    type: "DCA"
     symbol: "SPY"  # 标普 500 ETF
-    enabled: true
-    schedule: "0 10 * * MON"  # 每周一美东时间上午 10:00
-    parameters:
-      amount: 100.0  # 每次投资 100 美元
+    status: "active"
+    schedule: "0 10 1 * *"  # 每月 1 号美东时间上午 10:00
+    config:
+      base_amount: 6.0  # 每次投资 6 美元
 
   # 策略 2: DCA 定投 QQQ
   - id: "dca_qqq_weekly"
-    type: "dca"
+    type: "DCA"
     symbol: "QQQ"  # 纳斯达克 100 ETF
-    enabled: true
+    status: "active"
     schedule: "0 10 * * WED"  # 每周三美东时间上午 10:00
-    parameters:
-      amount: 100.0
+    config:
+      base_amount: 6.0
 
   # 策略 3: Drawdown 回撤加仓 SPY
   - id: "drawdown_spy"
-    type: "drawdown"
+    type: "Drawdown"
     symbol: "SPY"
-    enabled: true
+    status: "active"
     schedule: "0 15 * * *"  # 每天美东时间下午 3:00 检查
-    parameters:
+    config:
+      base_amount: 6.0  # 触发后买入 6 美元
       lookback_days: 30  # 回看 30 天
       drawdown_threshold: 0.05  # 5% 回撤触发
-      buy_amount: 200.0  # 触发后买入 200 美元
 
   # 策略 4: Drawdown 回撤加仓 QQQ
   - id: "drawdown_qqq"
-    type: "drawdown"
+    type: "Drawdown"
     symbol: "QQQ"
-    enabled: true
+    status: "active"
     schedule: "30 15 * * *"  # 每天美东时间下午 3:30 检查
-    parameters:
+    config:
+      base_amount: 6.0
       lookback_days: 30
       drawdown_threshold: 0.08  # 8% 回撤触发（科技股波动更大）
-      buy_amount: 200.0
 
   # 策略 5: ValueAveraging 价值平均 SPY
   - id: "va_spy_monthly"
-    type: "value_averaging"
+    type: "ValueAveraging"
     symbol: "SPY"
-    enabled: true
+    status: "active"
     schedule: "0 10 1 * *"  # 每月 1 号美东时间上午 10:00
-    parameters:
-      target_value_growth: 300.0  # 每次执行目标价值增长 300 美元
-      initial_target_value: 1000.0  # 初始目标价值 1000 美元
-    sell_rules:
-      max_sell_ratio: 0.3  # 最多卖出持仓的 30%
-      min_hold_days: 30  # 至少持有 30 天才能卖出
+    config:
+      target_growth_per_period: 6.0  # 每次执行目标价值增长 6 美元
 
   # 策略 6: ValueAveraging 价值平均 QQQ
   - id: "va_qqq_monthly"
-    type: "value_averaging"
+    type: "ValueAveraging"
     symbol: "QQQ"
-    enabled: true
-    schedule: "0 10 15 * *"  # 每月 15 号美东时间上午 10:00
-    parameters:
-      target_value_growth: 300.0
-      initial_target_value: 1000.0
-    sell_rules:
-      max_sell_ratio: 0.3
-      min_hold_days: 30
+    status: "active"
+    schedule: "0 10 15 * * *"  # 每月 15 号美东时间上午 10:00
+    config:
+      target_growth_per_period: 6.0
 
 # 可选：添加更多股票代码示例
 # 热门美股: AAPL, MSFT, GOOGL, AMZN, TSLA, NVDA

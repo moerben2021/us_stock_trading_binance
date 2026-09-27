@@ -97,7 +97,8 @@ class TradeExecutor:
         """执行买入交易"""
         # 获取账户余额
         balance = self.binance_client.get_account_balance()
-        usdt_balance = balance.get("USDT", {}).get("free", 0)
+        # 美股交易使用 USDC
+        usdt_balance = balance.get("USDC", {}).get("free", 0)
 
         # 检查余额
         required_amount = signal.amount
@@ -125,16 +126,70 @@ class TradeExecutor:
         # 获取实时价格
         current_price = self.binance_client.get_realtime_price(symbol)
 
-        # 计算购买数量
-        quantity = required_amount / current_price
+        # 对于市价买单，直接传入金额（notional），不需要计算数量
+        # Binance 美股 API 会自动计算能买到的股数
 
-        # 执行下单（带重试）
-        order_result = self._place_order_with_retry(symbol, "BUY", quantity)
+        # 执行下单（带重试）- 市价买单传入金额
+        order_result = self._place_order_with_retry(symbol, "BUY", required_amount)
 
-        # 解析订单结果
-        executed_qty = float(order_result.get("executedQty", 0))
-        executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
+        # 获取订单ID
         order_id = order_result.get("orderId")
+
+        # 下单接口返回的 status 只是请求确认码（S=已接受，F=失败）
+        # 需要查询订单详情获取真实的成交情况
+        if order_id:
+            try:
+                order_detail = self.binance_client.get_order_detail(order_id)
+                executed_qty = float(order_detail.get("executedQty", 0))
+                executed_amount = float(order_detail.get("cummulativeQuoteQty", 0))
+                order_status = order_detail.get("status", "UNKNOWN")
+
+                logger.info(f"订单详情: orderId={order_id}, status={order_status}, executedQty={executed_qty}, executedAmount={executed_amount}")
+
+                # 如果未成交（周末或市场关闭），不继续后续流程
+                if executed_qty == 0:
+                    logger.warning(f"订单已提交但未成交: orderId={order_id}, status={order_status}（可能是市场关闭）")
+
+                    # 发送未成交通知（保持交易通知的格式，但标注未成交状态）
+                    if account_webhook:
+                        # 获取当前余额
+                        balance = self.binance_client.get_account_balance()
+                        usdt_balance = balance.get("USDC", {}).get("free", 0)
+
+                        self.notifier.send_trade_notification(account_webhook, {
+                            "account_name": account_name,
+                            "strategy_id": strategy_id,
+                            "strategy_type": "N/A",
+                            "symbol": symbol,
+                            "action": "BUY",
+                            "quantity": 0,  # 未成交
+                            "price": current_price,
+                            "amount": required_amount,  # 预期金额
+                            "fee": 0,
+                            "balance_before": usdt_balance,
+                            "balance_after": usdt_balance,  # 余额未变化
+                            "status": "pending",  # 标记为待成交
+                            "order_id": order_id,
+                            "order_status": order_status,
+                            "reason": "市场关闭，订单已提交等待成交"
+                        })
+
+                    return {
+                        "success": True,
+                        "order_id": order_id,
+                        "status": "pending",
+                        "message": "订单已提交但未成交，等待市场开盘"
+                    }
+
+            except Exception as e:
+                logger.error(f"查询订单详情失败: {e}，使用下单响应的默认值")
+                # 如果查询失败，使用下单响应中的默认值（可能为0）
+                executed_qty = float(order_result.get("executedQty", 0))
+                executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
+        else:
+            # 没有订单ID，使用下单响应中的值
+            executed_qty = float(order_result.get("executedQty", 0))
+            executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
 
         # 计算手续费（简化：假设 0.1%）
         fee = executed_amount * self.FEE_RATE
@@ -162,7 +217,7 @@ class TradeExecutor:
         if account_webhook:
             # 获取更新后的余额
             new_balance = self.binance_client.get_account_balance()
-            new_usdt_balance = new_balance.get("USDT", {}).get("free", 0)
+            new_usdt_balance = new_balance.get("USDC", {}).get("free", 0)
 
             self.notifier.send_trade_notification(account_webhook, {
                 "account_name": account_name,
@@ -275,6 +330,11 @@ class TradeExecutor:
         """
         更新持仓
         """
+        # 防止数量为 0 时导致的除以零错误
+        if quantity <= 0:
+            logger.warning(f"持仓更新跳过: quantity={quantity} <= 0")
+            return
+
         position = self.database.get_position(account_name, symbol)
 
         if action == "BUY":
@@ -283,7 +343,13 @@ class TradeExecutor:
                 old_qty = position["quantity"]
                 old_cost = position["avg_cost"]
                 new_qty = old_qty + quantity
-                new_cost = (old_qty * old_cost + quantity * price) / new_qty
+
+                # 防止除以零
+                if new_qty > 0:
+                    new_cost = (old_qty * old_cost + quantity * price) / new_qty
+                else:
+                    logger.error(f"持仓更新异常: new_qty={new_qty} <= 0，跳过更新")
+                    return
 
                 self.database.update_position(account_name, symbol, {
                     "quantity": new_qty,

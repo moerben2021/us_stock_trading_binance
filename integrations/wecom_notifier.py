@@ -1,7 +1,7 @@
 """企业微信通知服务"""
 import requests
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from utils.retry import retry_with_config, RetryConfig
 
@@ -9,6 +9,15 @@ logger = logging.getLogger(__name__)
 
 class WeComNotifier:
     """企业微信通知器"""
+
+    def __init__(self, database=None):
+        """
+        初始化企业微信通知器
+
+        Args:
+            database: 数据库实例（可选，用于记录通知历史）
+        """
+        self.database = database
 
     @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_trade_notification(self, webhook_url: str, trade_info: Dict[str, Any]) -> bool:
@@ -24,7 +33,17 @@ class WeComNotifier:
         """
         action_cn = "买入" if trade_info["action"] == "BUY" else "卖出"
 
-        content = f"""【交易通知 - {trade_info['account_name']}】
+        # 检查是否为未成交状态
+        status = trade_info.get("status", "completed")
+        is_pending = (status == "pending")
+
+        # 根据状态设置标题
+        if is_pending:
+            title = f"【交易通知 - {trade_info['account_name']} - 待成交】"
+        else:
+            title = f"【交易通知 - {trade_info['account_name']}】"
+
+        content = f"""{title}
 策略：{trade_info['strategy_id']} ({trade_info['strategy_type']})
 标的：{trade_info['symbol']}
 操作：{action_cn}
@@ -32,10 +51,41 @@ class WeComNotifier:
 价格：${trade_info['price']}
 金额：${trade_info['amount']}
 手续费：${trade_info['fee']}
-账户余额：${trade_info['balance_before']} → ${trade_info['balance_after']}
+账户余额：${trade_info['balance_before']} → ${trade_info['balance_after']}"""
+
+        # 如果是未成交状态，添加额外信息
+        if is_pending:
+            order_id = trade_info.get("order_id", "N/A")
+            order_status = trade_info.get("order_status", "UNKNOWN")
+            reason = trade_info.get("reason", "等待市场开盘")
+            content += f"""
+
+📌 状态：待成交
+订单ID：{order_id}
+订单状态：{order_status}
+原因：{reason}"""
+        else:
+            content += f"""
+
+✅ 状态：已成交"""
+
+        content += f"""
 时间：{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"""
 
-        return self._send_message(webhook_url, content)
+        success = self._send_message(webhook_url, content)
+
+        # 记录通知到数据库
+        if self.database and success:
+            notification_type = "trade_pending" if is_pending else "trade"
+            self.database.save_notification({
+                "account_name": trade_info.get("account_name"),
+                "notification_type": notification_type,
+                "content": content,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "status": "success"
+            })
+
+        return success
 
     @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_alert_notification(self, webhook_url: str, alert_info: Dict[str, Any]) -> bool:
@@ -55,7 +105,19 @@ class WeComNotifier:
 详情：{alert_info.get('details', '无')}
 时间：{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"""
 
-        return self._send_message(webhook_url, content)
+        success = self._send_message(webhook_url, content)
+
+        # 记录通知到数据库
+        if self.database and success:
+            self.database.save_notification({
+                "account_name": alert_info.get("account_name", "system"),
+                "notification_type": "alert",
+                "content": content,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "status": "success"
+            })
+
+        return success
 
     @retry_with_config(RetryConfig(max_attempts=3, interval_seconds=1.0, backoff='fixed'))
     def send_summary_notification(self, webhook_url: str, summary_info: Dict[str, Any]) -> bool:
@@ -88,7 +150,19 @@ class WeComNotifier:
 
         content += f"\n\n✅ 系统状态：正常运行"
 
-        return self._send_message(webhook_url, content)
+        success = self._send_message(webhook_url, content)
+
+        # 记录通知到数据库
+        if self.database and success:
+            self.database.save_notification({
+                "account_name": summary_info.get("account_name", "system"),
+                "notification_type": "summary",
+                "content": content,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "status": "success"
+            })
+
+        return success
 
     def _send_message(self, webhook_url: str, content: str) -> bool:
         """
