@@ -181,11 +181,10 @@ class BinanceClient:
 
         response = self._call_api("POST", self.ENDPOINT_ORDER, params, signed=True)
 
-        # TODO: 仅用于调试 - 生产环境应移除或限制为关键字段
-        # 用户要求查看完整响应以验证 API 行为
-        logger.info(f"下单接口完整响应: {response}")
-
+        # 仅记录关键字段，避免敏感信息泄露
         order_id = response.get("orderId") or response.get("id")
+        status = response.get("status")
+        logger.debug(f"订单响应: orderId={order_id}, status={status}, symbol={symbol}, side={side}")
         logger.info(f"下单成功: {side} {symbol}, 订单ID: {order_id}")
         return response
 
