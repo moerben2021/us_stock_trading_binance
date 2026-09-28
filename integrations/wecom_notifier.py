@@ -78,11 +78,12 @@ class WeComNotifier:
         if self.database and success:
             notification_type = "trade_pending" if is_pending else "trade"
             self.database.save_notification({
-                "account_name": trade_info.get("account_name"),
                 "notification_type": notification_type,
-                "content": content,
+                "recipient": trade_info.get("account_name", "未知账户"),
+                "content_summary": f"{action_cn} {trade_info['symbol']} {trade_info['quantity']}股",
+                "status": "success",
                 "sent_at": datetime.now(timezone.utc).isoformat(),
-                "status": "success"
+                "error_message": None
             })
 
         return success
@@ -110,11 +111,12 @@ class WeComNotifier:
         # 记录通知到数据库
         if self.database and success:
             self.database.save_notification({
-                "account_name": alert_info.get("account_name", "system"),
                 "notification_type": "alert",
-                "content": content,
+                "recipient": alert_info.get("account_name", "system"),
+                "content_summary": alert_info.get("message", "系统告警"),
+                "status": "success",
                 "sent_at": datetime.now(timezone.utc).isoformat(),
-                "status": "success"
+                "error_message": None
             })
 
         return success
@@ -155,11 +157,12 @@ class WeComNotifier:
         # 记录通知到数据库
         if self.database and success:
             self.database.save_notification({
-                "account_name": summary_info.get("account_name", "system"),
                 "notification_type": "summary",
-                "content": content,
+                "recipient": summary_info.get("account_name", "system"),
+                "content_summary": f"{summary_info.get('summary_type', '汇总')}报告",
+                "status": "success",
                 "sent_at": datetime.now(timezone.utc).isoformat(),
-                "status": "success"
+                "error_message": None
             })
 
         return success
