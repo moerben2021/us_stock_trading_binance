@@ -171,6 +171,7 @@ class BinanceClient:
             "symbol": symbol,
             "side": side,
             "orderType": "MARKET",  # 使用 orderType 而不是 type
+            "tokenize": "false",  # 不进行代币化，持有原生美股
         }
 
         # 市价买单使用 notional（金额），市价卖单使用 quantity（数量）
