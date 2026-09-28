@@ -199,7 +199,7 @@ def main():
         print("  [OK] yFinance 客户端初始化完成")
 
         # 初始化 WeChat 企业号通知器（传入数据库实例）
-        wecom_notifier = WeComNotifier(database=db)
+        wecom_notifier = WeComNotifier(database=database)
         logger.info("企业微信通知器初始化完成")
         print("  [OK] 企业微信通知器初始化完成")
 
