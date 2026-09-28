@@ -140,14 +140,20 @@ class TradeExecutor:
         if order_id:
             try:
                 order_detail = self.binance_client.get_order_detail(order_id)
-                executed_qty = float(order_detail.get("executedQty", 0))
-                executed_amount = float(order_detail.get("cummulativeQuoteQty", 0))
+                # Binance 美股 API 使用 filledQty、filledTotal 和 fee 字段
+                executed_qty = float(order_detail.get("filledQty", 0))
+                executed_amount = float(order_detail.get("filledTotal", 0))
+                actual_fee = float(order_detail.get("fee", 0))  # API 返回的实际手续费
                 order_status = order_detail.get("status", "UNKNOWN")
 
-                logger.info(f"订单详情: orderId={order_id}, status={order_status}, executedQty={executed_qty}, executedAmount={executed_amount}")
+                logger.info(f"订单详情: orderId={order_id}, status={order_status}, executedQty={executed_qty}, executedAmount={executed_amount}, fee={actual_fee}")
+
+                # 判断是否成交：检查状态和成交数量
+                # 状态为 FILLED 表示已成交，ACCEPTED 表示已接受但未成交
+                is_filled = (order_status == "FILLED" and executed_qty > 0)
 
                 # 如果未成交（周末或市场关闭），不继续后续流程
-                if executed_qty == 0:
+                if not is_filled:
                     logger.warning(f"订单已提交但未成交: orderId={order_id}, status={order_status}（可能是市场关闭）")
 
                     # 发送未成交通知（保持交易通知的格式，但标注未成交状态）
@@ -184,15 +190,17 @@ class TradeExecutor:
             except Exception as e:
                 logger.error(f"查询订单详情失败: {e}，使用下单响应的默认值")
                 # 如果查询失败，使用下单响应中的默认值（可能为0）
-                executed_qty = float(order_result.get("executedQty", 0))
-                executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
+                executed_qty = float(order_result.get("filledQty", 0))
+                executed_amount = float(order_result.get("filledTotal", 0))
+                actual_fee = float(order_result.get("fee", 0))
         else:
             # 没有订单ID，使用下单响应中的值
-            executed_qty = float(order_result.get("executedQty", 0))
-            executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
+            executed_qty = float(order_result.get("filledQty", 0))
+            executed_amount = float(order_result.get("filledTotal", 0))
+            actual_fee = float(order_result.get("fee", 0))
 
-        # 计算手续费（简化：假设 0.1%）
-        fee = executed_amount * self.FEE_RATE
+        # 使用 API 返回的实际手续费，如果未获取到则按 0.1% 估算
+        fee = actual_fee if actual_fee > 0 else (executed_amount * self.FEE_RATE)
 
         # 记录交易
         trade_data = {
@@ -258,16 +266,30 @@ class TradeExecutor:
         # 执行下单（带重试）
         order_result = self._place_order_with_retry(symbol, "SELL", quantity)
 
-        # 解析订单结果
-        executed_qty = float(order_result.get("executedQty", 0))
-        executed_amount = float(order_result.get("cummulativeQuoteQty", 0))
+        # 获取订单ID并查询详情
         order_id = order_result.get("orderId")
+
+        if order_id:
+            try:
+                order_detail = self.binance_client.get_order_detail(order_id)
+                executed_qty = float(order_detail.get("filledQty", 0))
+                executed_amount = float(order_detail.get("filledTotal", 0))
+                actual_fee = float(order_detail.get("fee", 0))
+            except Exception as e:
+                logger.error(f"查询卖单详情失败: {e}，使用下单响应的默认值")
+                executed_qty = float(order_result.get("filledQty", 0))
+                executed_amount = float(order_result.get("filledTotal", 0))
+                actual_fee = float(order_result.get("fee", 0))
+        else:
+            executed_qty = float(order_result.get("filledQty", 0))
+            executed_amount = float(order_result.get("filledTotal", 0))
+            actual_fee = float(order_result.get("fee", 0))
 
         # 获取实时价格
         current_price = self.binance_client.get_realtime_price(symbol)
 
-        # 计算手续费
-        fee = executed_amount * self.FEE_RATE
+        # 使用 API 返回的实际手续费，如果未获取到则按 0.1% 估算
+        fee = actual_fee if actual_fee > 0 else (executed_amount * self.FEE_RATE)
 
         # 记录交易
         trade_data = {
