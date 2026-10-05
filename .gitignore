@@ -15,6 +15,12 @@ data/*.db-journal
 logs/*.log
 logs/pm2-*.log
 
+# 文档输出（草稿、帖子等临时内容）
+docs/outputs/
+
+# 工作日志（个人记录，不提交）
+docs/work_logs/
+
 # Python
 __pycache__/
 *.py[cod]
